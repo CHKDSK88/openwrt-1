@@ -111,6 +111,21 @@ define Build/wrg-header
 	mv $@.new $@
 endef
 
+# combine kernel and rootfs into one image
+# mkdlinkfw <type> <optional extra arguments to mkdlinkfw binary>
+# <type> is "sysupgrade" or nothing for factory
+
+define Build/mkdlinkfw
+	-$(STAGING_DIR_HOST)/bin/mkdlinkfw \
+		-m $(DLINK_ROM_ID) -f $(DLINK_FAMILY_MEMBER) \
+		-k $(IMAGE_KERNEL) \
+		-r $(IMAGE_ROOTFS) \
+		-o $@ \
+		-j \
+		-s $(DLINK_FIRMWARE_SIZE) \
+		$(if $(findstring sysupgrade,$(word 1,$(1))),-S)
+endef
+
 #
 # The real magic happens inside these templates
 #

@@ -147,6 +147,20 @@ define Device/dir-810l
 endef
 TARGET_DEVICES += dir-810l
 
+define Device/dlink_dwr-116-a1
+  DTS := DWR-116-A1
+  DEVICE_TITLE := D-Link DWR-116 A1
+  DEVICE_PACKAGES := kmod-usb2
+  DLINK_ROM_ID := DLK6E3803001
+  DLINK_FAMILY_MEMBER := 0x6E38
+  DLINK_FIRMWARE_SIZE := 0x7E0000
+  KERNEL := $(KERNEL_DTB)
+  IMAGES += factory.bin
+  IMAGE/sysupgrade.bin := mkdlinkfw sysupgrade | append-metadata
+  IMAGE/factory.bin := mkdlinkfw
+endef
+TARGET_DEVICES += dlink_dwr-116-a1
+
 define Device/e1700
   DTS := E1700
   IMAGES += factory.bin
