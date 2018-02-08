@@ -3,8 +3,8 @@
 #include "DWR-116-A.dtsi"
 
 / {
-	compatible = "dlink,dwr-116-a1", "ralink,mt7620n-soc";
-	model = "D-link DWR-116 A1";
+	compatible = "dlink,dwr-116-a2pl", "ralink,mt7620n-soc";
+	model = "D-link DWR-116 A2PL";
 
 	gpio-keys-polled {
 		compatible = "gpio-keys-polled";
@@ -40,15 +40,14 @@
 };
 
 &ethernet {
-	mtd-mac-address = <&config 0xe291>;
+	mtd-mac-address = <&config 0xe2a1>;
 	mediatek,portmap = "llllw";
 	pinctrl-names = "default";
 	pinctrl-0 = <&ephy_pins>;
 };
 
 &wmac {
-	ralink,mtd-eeprom = <&config 0xe084>;
+	ralink,mtd-eeprom = <&config 0xe094>;
 };
-
 
 

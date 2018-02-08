@@ -80,6 +80,8 @@ ramips_setup_interfaces()
 	dir-610-a1|\
 	dir-615-h1|\
 	dlink,dwr-116-a1|\
+	dlink,dwr-116-a2eu|\
+	dlink,dwr-116-a2pl|\
 	ew1200|\
 	firewrt|\
 	hc5661a|\
