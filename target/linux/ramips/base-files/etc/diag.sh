@@ -89,6 +89,9 @@ get_status_led() {
 	dir-615-h1|\
 	dir-620-a1|\
 	dir-620-d1|\
+	dlink,dwr-116-a1|\
+	dlink,dwr-116-a2eu|\
+	dlink,dwr-116-a2pl|\
 	dwr-512-b|\
 	gb-pc1|\
 	gb-pc2|\

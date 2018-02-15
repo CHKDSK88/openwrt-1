@@ -27,6 +27,11 @@
 	gpio-leds {
 		compatible = "gpio-leds";
 
+		status {
+			label = "dwr-116-a2eu:green:status";
+			gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;
+		};
+
 		wifi {
 			label = "dwr-116-a2eu:green:wifi";
 			gpios = <&gpio3 0 GPIO_ACTIVE_LOW>;
