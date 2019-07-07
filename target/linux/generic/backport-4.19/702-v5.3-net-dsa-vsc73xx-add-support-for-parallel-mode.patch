@@ -1,0 +1,215 @@
+From 631e83bf7c0e801f0ab960a97a3228b2dbf9ebeb Mon Sep 17 00:00:00 2001
+From: Pawel Dembicki <paweldembicki@gmail.com>
+Date: Fri, 5 Jul 2019 00:29:06 +0200
+Subject: [PATCH] net: dsa: vsc73xx: add support for parallel mode
+
+This patch add platform part of vsc73xx driver.
+It allows to use chip connected to a parallel memory bus and work in
+memory-mapped I/O mode. (aka PI bus in chip manual)
+
+By default device is working in big endian mode.
+
+Signed-off-by: Pawel Dembicki <paweldembicki@gmail.com>
+Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
+Reviewed-by: Florian Fainelli <f.fainelli@gmail.com>
+Signed-off-by: David S. Miller <davem@davemloft.net>
+---
+ drivers/net/dsa/Kconfig                    |   9 ++
+ drivers/net/dsa/Makefile                   |   1 +
+ drivers/net/dsa/vitesse-vsc73xx-platform.c | 164 +++++++++++++++++++++
+ 3 files changed, 174 insertions(+)
+ create mode 100644 drivers/net/dsa/vitesse-vsc73xx-platform.c
+
+--- a/drivers/net/dsa/Kconfig
++++ b/drivers/net/dsa/Kconfig
+@@ -105,4 +105,13 @@ config NET_DSA_VITESSE_VSC73XX_SPI
+ 	---help---
+ 	  This enables support for the Vitesse VSC7385, VSC7388, VSC7395
+ 	  and VSC7398 SparX integrated ethernet switches in SPI managed mode.
++
++config NET_DSA_VITESSE_VSC73XX_PLATFORM
++	tristate "Vitesse VSC7385/7388/7395/7398 Platform mode support"
++	depends on HAS_IOMEM
++	select NET_DSA_VITESSE_VSC73XX
++	---help---
++	  This enables support for the Vitesse VSC7385, VSC7388, VSC7395
++	  and VSC7398 SparX integrated ethernet switches, connected over
++	  a CPU-attached address bus and work in memory-mapped I/O mode.
+ endmenu
+--- a/drivers/net/dsa/Makefile
++++ b/drivers/net/dsa/Makefile
+@@ -14,6 +14,7 @@ obj-$(CONFIG_NET_DSA_SMSC_LAN9303) += la
+ obj-$(CONFIG_NET_DSA_SMSC_LAN9303_I2C) += lan9303_i2c.o
+ obj-$(CONFIG_NET_DSA_SMSC_LAN9303_MDIO) += lan9303_mdio.o
+ obj-$(CONFIG_NET_DSA_VITESSE_VSC73XX) += vitesse-vsc73xx-core.o
++obj-$(CONFIG_NET_DSA_VITESSE_VSC73XX_PLATFORM) += vitesse-vsc73xx-platform.o
+ obj-$(CONFIG_NET_DSA_VITESSE_VSC73XX_SPI) += vitesse-vsc73xx-spi.o
+ obj-y				+= b53/
+ obj-y				+= microchip/
+--- /dev/null
++++ b/drivers/net/dsa/vitesse-vsc73xx-platform.c
+@@ -0,0 +1,164 @@
++// SPDX-License-Identifier: GPL-2.0
++/* DSA driver for:
++ * Vitesse VSC7385 SparX-G5 5+1-port Integrated Gigabit Ethernet Switch
++ * Vitesse VSC7388 SparX-G8 8-port Integrated Gigabit Ethernet Switch
++ * Vitesse VSC7395 SparX-G5e 5+1-port Integrated Gigabit Ethernet Switch
++ * Vitesse VSC7398 SparX-G8e 8-port Integrated Gigabit Ethernet Switch
++ *
++ * This driver takes control of the switch chip connected over CPU-attached
++ * address bus and configures it to route packages around when connected to
++ * a CPU port.
++ *
++ * Copyright (C) 2019 Pawel Dembicki <paweldembicki@gmail.com>
++ * Based on vitesse-vsc-spi.c by:
++ * Copyright (C) 2018 Linus Wallej <linus.walleij@linaro.org>
++ * Includes portions of code from the firmware uploader by:
++ * Copyright (C) 2009 Gabor Juhos <juhosg@openwrt.org>
++ */
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++
++#include "vitesse-vsc73xx.h"
++
++#define VSC73XX_CMD_PLATFORM_BLOCK_SHIFT		14
++#define VSC73XX_CMD_PLATFORM_BLOCK_MASK			0x7
++#define VSC73XX_CMD_PLATFORM_SUBBLOCK_SHIFT		10
++#define VSC73XX_CMD_PLATFORM_SUBBLOCK_MASK		0xf
++#define VSC73XX_CMD_PLATFORM_REGISTER_SHIFT		2
++
++/**
++ * struct vsc73xx_platform - VSC73xx Platform state container
++ */
++struct vsc73xx_platform {
++	struct platform_device	*pdev;
++	void __iomem		*base_addr;
++	struct vsc73xx		vsc;
++};
++
++static const struct vsc73xx_ops vsc73xx_platform_ops;
++
++static u32 vsc73xx_make_addr(u8 block, u8 subblock, u8 reg)
++{
++	u32 ret;
++
++	ret = (block & VSC73XX_CMD_PLATFORM_BLOCK_MASK)
++	    << VSC73XX_CMD_PLATFORM_BLOCK_SHIFT;
++	ret |= (subblock & VSC73XX_CMD_PLATFORM_SUBBLOCK_MASK)
++	    << VSC73XX_CMD_PLATFORM_SUBBLOCK_SHIFT;
++	ret |= reg << VSC73XX_CMD_PLATFORM_REGISTER_SHIFT;
++
++	return ret;
++}
++
++static int vsc73xx_platform_read(struct vsc73xx *vsc, u8 block, u8 subblock,
++				 u8 reg, u32 *val)
++{
++	struct vsc73xx_platform *vsc_platform = vsc->priv;
++	u32 offset;
++
++	if (!vsc73xx_is_addr_valid(block, subblock))
++		return -EINVAL;
++
++	offset = vsc73xx_make_addr(block, subblock, reg);
++	/* By default vsc73xx running in big-endian mode.
++	 * (See "Register Addressing" section 5.5.3 in the VSC7385 manual.)
++	 */
++	*val = ioread32be(vsc_platform->base_addr + offset);
++
++	return 0;
++}
++
++static int vsc73xx_platform_write(struct vsc73xx *vsc, u8 block, u8 subblock,
++				  u8 reg, u32 val)
++{
++	struct vsc73xx_platform *vsc_platform = vsc->priv;
++	u32 offset;
++
++	if (!vsc73xx_is_addr_valid(block, subblock))
++		return -EINVAL;
++
++	offset = vsc73xx_make_addr(block, subblock, reg);
++	iowrite32be(val, vsc_platform->base_addr + offset);
++
++	return 0;
++}
++
++static int vsc73xx_platform_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct vsc73xx_platform *vsc_platform;
++	struct resource *res = NULL;
++	int ret;
++
++	vsc_platform = devm_kzalloc(dev, sizeof(*vsc_platform), GFP_KERNEL);
++	if (!vsc_platform)
++		return -ENOMEM;
++
++	platform_set_drvdata(pdev, vsc_platform);
++	vsc_platform->pdev = pdev;
++	vsc_platform->vsc.dev = dev;
++	vsc_platform->vsc.priv = vsc_platform;
++	vsc_platform->vsc.ops = &vsc73xx_platform_ops;
++
++	/* obtain I/O memory space */
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!res) {
++		dev_err(&pdev->dev, "cannot obtain I/O memory space\n");
++		ret = -ENXIO;
++		return ret;
++	}
++
++	vsc_platform->base_addr = devm_ioremap_resource(&pdev->dev, res);
++	if (IS_ERR(vsc_platform->base_addr)) {
++		dev_err(&pdev->dev, "cannot request I/O memory space\n");
++		ret = -ENXIO;
++		return ret;
++	}
++
++	return vsc73xx_probe(&vsc_platform->vsc);
++}
++
++static int vsc73xx_platform_remove(struct platform_device *pdev)
++{
++	struct vsc73xx_platform *vsc_platform = platform_get_drvdata(pdev);
++
++	return vsc73xx_remove(&vsc_platform->vsc);
++}
++
++static const struct vsc73xx_ops vsc73xx_platform_ops = {
++	.read = vsc73xx_platform_read,
++	.write = vsc73xx_platform_write,
++};
++
++static const struct of_device_id vsc73xx_of_match[] = {
++	{
++		.compatible = "vitesse,vsc7385",
++	},
++	{
++		.compatible = "vitesse,vsc7388",
++	},
++	{
++		.compatible = "vitesse,vsc7395",
++	},
++	{
++		.compatible = "vitesse,vsc7398",
++	},
++	{ },
++};
++MODULE_DEVICE_TABLE(of, vsc73xx_of_match);
++
++static struct platform_driver vsc73xx_platform_driver = {
++	.probe = vsc73xx_platform_probe,
++	.remove = vsc73xx_platform_remove,
++	.driver = {
++		.name = "vsc73xx-platform",
++		.of_match_table = vsc73xx_of_match,
++	},
++};
++module_platform_driver(vsc73xx_platform_driver);
++
++MODULE_AUTHOR("Pawel Dembicki <paweldembicki@gmail.com>");
++MODULE_DESCRIPTION("Vitesse VSC7385/7388/7395/7398 Platform driver");
++MODULE_LICENSE("GPL v2");
