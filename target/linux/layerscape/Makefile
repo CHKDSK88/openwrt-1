@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only
-#
+# ONLY FOR TEST
 # Copyright (C) 2016 Jiang Yutang <jiangyutang1978@gmail.com>
 
 include $(TOPDIR)/rules.mk
